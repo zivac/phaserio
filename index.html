@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8" />
+    <title>Multiplayer platformer test</title>
+	<script src="https://code.jquery.com/jquery-1.12.1.min.js"></script>
+  <script src="https://cdn.socket.io/socket.io-1.4.5.js"></script>
+	<script type="text/javascript" src="js/phaser.min.js"></script>
+    <style type="text/css">
+        body {
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+
+<script type="text/javascript">
+
+var game = new Phaser.Game(800, 600, Phaser.AUTO, '', { preload: preload, create: create, update: update });
+
+function preload() {
+
+    game.load.image('sky', 'assets/sky.png');
+    game.load.image('ground', 'assets/platform.png');
+    game.load.image('star', 'assets/star.png');
+    game.load.spritesheet('dude', 'assets/dude.png', 32, 48);
+
+		game.stage.disableVisibilityChange = true;
+
+}
+
+var myUsername = '';
+var players = {};
+var playerActions = {};
+var platforms;
+var cursors;
+
+function addPlayer(username, center, velocity, actions) {
+	// The player and its settings
+	var x = center?center.x:32;
+	var y = center?center.y:game.world.height;
+	var newPlayer = game.add.sprite(x, y - 150, 'dude');
+
+	//  We need to enable physics on the player
+	game.physics.arcade.enable(newPlayer);
+
+	//  Player physics properties. Give the little guy a slight bounce.
+	newPlayer.body.bounce.y = 0.2;
+	newPlayer.body.gravity.y = 800;
+	newPlayer.body.collideWorldBounds = true;
+
+	if(velocity) newPlayer.body.velocity = velocity;
+
+	//  Our two animations, walking left and right.
+	newPlayer.animations.add('left', [0, 1, 2, 3], 10, true);
+	newPlayer.animations.add('right', [5, 6, 7, 8], 10, true);
+
+	if(!username) username = myUsername;
+
+	players[username] = newPlayer;
+
+	if(actions) {
+		playerActions[username] = actions;
+	} else {
+		playerActions[username] = {}
+	}
+}
+
+function updatePlayer(username) {
+
+	if(!username) username = myUsername;
+
+	var player = players[username];
+
+	//  Reset the players velocity (movement)
+	player.body.velocity.x = 0;
+
+	if (playerActions[username]['left'])
+	{
+			//  Move to the left
+			player.body.velocity.x = -150;
+
+			player.animations.play('left');
+	}
+	else if (playerActions[username]['right'])
+	{
+			//  Move to the right
+			player.body.velocity.x = 150;
+
+			player.animations.play('right');
+	}
+	else
+	{
+			//  Stand still
+			player.animations.stop();
+
+			player.frame = 4;
+	}
+
+	//  Allow the player to jump if they are touching the ground.
+	if (playerActions[username]['up'] && player.body.touching.down)
+	{
+			player.body.velocity.y = -600;
+	}
+}
+
+function create() {
+
+		$.get('http://52.31.77.24:1346/guestAccess', function(response) {
+
+			//var username = data.results[0].user.username;
+
+			socket = io.connect("http://52.31.77.24:1346");
+
+			socket.on('connect', function(data) {
+				console.log('joining room with '+response.token);
+				socket.emit('authenticate', {token:response.token});
+				socket.on('authenticated', function(response) {
+					myUsername = response.username;
+					addPlayer(myUsername);
+					socket.emit('phaserJoin', 'phaser');
+					socket.on('phaserJoin', function(data) {
+						console.log('player joined '+data.username);
+						addPlayer(data.username);
+						socket.emit('phaserMe', {
+							to: data.username,
+							username: myUsername,
+							center: players[myUsername].body.center,
+							velocity: players[myUsername].body.velocity
+						});
+					});
+					socket.on('phaserMe', function(data) {
+						console.log('previous player '+data.username);
+						addPlayer(data.username, data.center, data.velocity);
+					})
+					socket.on('phaserAction', function(data) {
+						console.log('player action', data)
+						playerActions[data.player.username][data.action.action] = data.action.value;
+					})
+				});
+			});
+
+		});
+
+    //  We're going to be using physics, so enable the Arcade Physics system
+    game.physics.startSystem(Phaser.Physics.ARCADE);
+
+    //  A simple background for our game
+    game.add.sprite(0, 0, 'sky');
+
+    //  The platforms group contains the ground and the 2 ledges we can jump on
+    platforms = game.add.group();
+
+    //  We will enable physics for any object that is created in this group
+    platforms.enableBody = true;
+
+    // Here we create the ground.
+    var ground = platforms.create(0, game.world.height - 64, 'ground');
+
+    //  Scale it to fit the width of the game (the original sprite is 400x32 in size)
+    ground.scale.setTo(2, 2);
+
+    //  This stops it from falling away when you jump on it
+    ground.body.immovable = true;
+
+    //  Now let's create two ledges
+    var ledge = platforms.create(400, 400, 'ground');
+    ledge.body.immovable = true;
+
+    ledge = platforms.create(-150, 250, 'ground');
+    ledge.body.immovable = true;
+
+    //  Our controls.
+    cursors = game.input.keyboard.createCursorKeys();
+
+		cursors.left.onUp.add(function() {
+			playerActions[myUsername]['left'] = false;
+			socket.emit('phaserAction', {
+				action: 'left',
+				value: false
+			})
+		})
+
+		cursors.left.onDown.add(function() {
+			playerActions[myUsername]['left'] = true;
+			socket.emit('phaserAction', {
+				action: 'left',
+				value: true
+			})
+		})
+
+		cursors.right.onUp.add(function() {
+			playerActions[myUsername]['right'] = false;
+			socket.emit('phaserAction', {
+				action: 'right',
+				value: false
+			})
+		})
+
+		cursors.right.onDown.add(function() {
+			playerActions[myUsername]['right'] = true;
+			socket.emit('phaserAction', {
+				action: 'right',
+				value: true
+			})
+		})
+
+		cursors.up.onUp.add(function() {
+			playerActions[myUsername]['up'] = false;
+			socket.emit('phaserAction', {
+				action: 'up',
+				value: false
+			})
+		})
+
+		cursors.up.onDown.add(function() {
+			playerActions[myUsername]['up'] = true;
+			socket.emit('phaserAction', {
+				action: 'up',
+				value: true
+			})
+		})
+
+}
+
+function update() {
+
+    //  Collide the player and the stars with the platforms
+		for(username in players) {
+			game.physics.arcade.collide(players[username], platforms);
+			updatePlayer(username);
+		}
+
+}
+</script>
+
+</body>
+</html>
