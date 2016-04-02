@@ -107,13 +107,13 @@ function updatePlayer(username) {
 
 function create() {
 
-		$.get('http://localhost:1346/guestAccess', function(response) {
-		//$.get('http://52.31.77.24:1346/guestAccess', function(response) {
+		//$.get('http://localhost:1346/guestAccess', function(response) {
+		$.get('http://52.31.77.24:1346/guestAccess', function(response) {
 
 			//var username = data.results[0].user.username;
 
-			socket = io.connect("http://localhost:1346");
-			//socket = io.connect("http://52.31.77.24:1346");
+			//socket = io.connect("http://localhost:1346");
+			socket = io.connect("http://52.31.77.24:1346");
 
 			socket.on('connect', function(data) {
 				console.log('joining room with '+response.token);
