@@ -34,12 +34,13 @@ var players = {};
 var playerActions = {};
 var platforms;
 var cursors;
+var spawnPoint;
 
 function addPlayer(username, center, velocity, actions) {
 	// The player and its settings
-	var x = center?center.x:32;
-	var y = center?center.y:game.world.height;
-	var newPlayer = game.add.sprite(x, y - 150, 'dude');
+	var x = center?center.x:spawnPoint.x;
+	var y = center?center.y:spawnPoint.y;
+	var newPlayer = game.add.sprite(x, y, 'dude');
 
 	//  We need to enable physics on the player
 	game.physics.arcade.enable(newPlayer);
@@ -106,11 +107,13 @@ function updatePlayer(username) {
 
 function create() {
 
-		$.get('http://52.31.77.24:1346/guestAccess', function(response) {
+		$.get('http://localhost:1346/guestAccess', function(response) {
+		//$.get('http://52.31.77.24:1346/guestAccess', function(response) {
 
 			//var username = data.results[0].user.username;
 
-			socket = io.connect("http://52.31.77.24:1346");
+			socket = io.connect("http://localhost:1346");
+			//socket = io.connect("http://52.31.77.24:1346");
 
 			socket.on('connect', function(data) {
 				console.log('joining room with '+response.token);
@@ -125,7 +128,7 @@ function create() {
 						socket.emit('phaserMe', {
 							to: data.username,
 							username: myUsername,
-							center: players[myUsername].body.center,
+							center: players[myUsername].position,
 							velocity: players[myUsername].body.velocity
 						});
 					});
@@ -134,13 +137,23 @@ function create() {
 						addPlayer(data.username, data.center, data.velocity);
 					})
 					socket.on('phaserAction', function(data) {
+						var player = players[data.player.username];
 						console.log('player action', data)
 						playerActions[data.player.username][data.action.action] = data.action.value;
+						player.body.moves = false;
+						player.x = data.action.position.x;
+						player.y = data.action.position.y;
+						player.body.moves = true;
+					})
+					socket.on('userDisconnected', function(data) {
+						if(players[data.user]) players[data.user].kill();
 					})
 				});
 			});
 
 		});
+
+		spawnPoint = {x:32, y:game.world.height-200}
 
     //  We're going to be using physics, so enable the Arcade Physics system
     game.physics.startSystem(Phaser.Physics.ARCADE);
@@ -176,6 +189,7 @@ function create() {
 		cursors.left.onUp.add(function() {
 			playerActions[myUsername]['left'] = false;
 			socket.emit('phaserAction', {
+				position: players[myUsername].position,
 				action: 'left',
 				value: false
 			})
@@ -184,6 +198,7 @@ function create() {
 		cursors.left.onDown.add(function() {
 			playerActions[myUsername]['left'] = true;
 			socket.emit('phaserAction', {
+				position: players[myUsername].position,
 				action: 'left',
 				value: true
 			})
@@ -192,6 +207,7 @@ function create() {
 		cursors.right.onUp.add(function() {
 			playerActions[myUsername]['right'] = false;
 			socket.emit('phaserAction', {
+				position: players[myUsername].position,
 				action: 'right',
 				value: false
 			})
@@ -200,6 +216,7 @@ function create() {
 		cursors.right.onDown.add(function() {
 			playerActions[myUsername]['right'] = true;
 			socket.emit('phaserAction', {
+				position: players[myUsername].position,
 				action: 'right',
 				value: true
 			})
@@ -208,6 +225,7 @@ function create() {
 		cursors.up.onUp.add(function() {
 			playerActions[myUsername]['up'] = false;
 			socket.emit('phaserAction', {
+				position: players[myUsername].position,
 				action: 'up',
 				value: false
 			})
@@ -216,6 +234,7 @@ function create() {
 		cursors.up.onDown.add(function() {
 			playerActions[myUsername]['up'] = true;
 			socket.emit('phaserAction', {
+				position: players[myUsername].position,
 				action: 'up',
 				value: true
 			})
@@ -228,9 +247,27 @@ function update() {
     //  Collide the player and the stars with the platforms
 		for(username in players) {
 			game.physics.arcade.collide(players[username], platforms);
+			for(username2 in players) {
+				if(username != username2) game.physics.arcade.collide(players[username], players[username2], collisionHandler);
+			}
 			updatePlayer(username);
 		}
 
+}
+
+function collisionHandler(obj1, obj2) {
+	//do something
+	if(obj1.body.touching.down && obj2.body.touching.up) {
+		obj2.kill();
+		obj2.x = spawnPoint.x;
+		obj2.y = spawnPoint.y;
+		obj2.revive();
+	} else if(obj2.body.touching.down && obj1.body.touching.up) {
+		obj1.kill();
+		obj1.x = spawnPoint.x;
+		obj1.y = spawnPoint.y;
+		obj1.revive();
+	}
 }
 </script>
 
