@@ -3,22 +3,47 @@
 <head>
 	<meta charset="UTF-8" />
     <title>Multiplayer platformer test</title>
-	<script src="https://code.jquery.com/jquery-1.12.1.min.js"></script>
-  <script src="https://cdn.socket.io/socket.io-1.4.5.js"></script>
+	<script src="js/jquery.min.js"></script>
+  <script src="js/socket.io.js"></script>
 	<script type="text/javascript" src="js/phaser.min.js"></script>
     <style type="text/css">
         body {
             margin: 0;
         }
+				#game {
+					display: inline;
+					float: left;
+					width: 800px;
+				}
+				#score {
+					display:inline;
+					float: left;
+					padding: 20px;
+				}
     </style>
 </head>
 <body>
+
+	<div id="game"></div>
+
+	<div id="score">
+		<table>
+			<thead>
+				<tr>
+					<th>Player</th>
+					<th>Kills</th>
+					<th>Deaths</th>
+				</tr>
+			</thead>
+			<tbody id="scoreboard"></tbody>
+		</table>
+	</div>
 
 <script type="text/javascript">
 
 var baseUrl = document.location.hostname == "localhost"?"http://localhost:1346":'http://52.31.77.24:1346';
 
-var game = new Phaser.Game(800, 600, Phaser.AUTO, '', { preload: preload, create: create, update: update });
+var game = new Phaser.Game(800, 600, Phaser.AUTO, 'game', { preload: preload, create: create, update: update });
 
 function preload() {
 
@@ -41,7 +66,8 @@ var platforms;
 var cursors;
 var spawnPoint;
 
-function addPlayer(username, center, velocity, actions, score) {
+function addPlayer(username, center, velocity, actions, kills, deaths, tint) {
+	console.log('add player called', username);
 	// The player and its settings
 	var x = center?center.x:spawnPoint.x;
 	var y = center?center.y:spawnPoint.y;
@@ -57,8 +83,10 @@ function addPlayer(username, center, velocity, actions, score) {
 
 	if(velocity) newPlayer.body.velocity = velocity;
 
-	if(score) newPlayer.score = score;
-	else newPlayer.score = 0;
+	newPlayer.kills = kills?kills:0;
+	newPlayer.deaths = deaths?deaths:0;
+
+	if(tint) newPlayer.tint = tint;
 
 	//  Our two animations, walking left and right.
 	newPlayer.animations.add('left', [0, 1, 2, 3], 10, true);
@@ -66,7 +94,11 @@ function addPlayer(username, center, velocity, actions, score) {
 
 	if(!username) username = myUsername;
 
+	newPlayer.name = username;
+
 	players[username] = newPlayer;
+
+	$('#scoreboard').append('<tr><td class="username">'+username+'</td><td class="kills">'+newPlayer.kills+'</td><td class="deaths">'+newPlayer.deaths+'</td></tr>');
 
 	names[username] = game.add.text(newPlayer.x-10, newPlayer.y-10, username, 8);
 	names[username].fontSize = 10;
@@ -104,7 +136,7 @@ function updatePlayer(username) {
 	else
 	{
 			if (playerActions[username]['down']) {
-				if(player.body.touching.down && player.y < 480) player.y += 5;
+				if(player.body.touching.down/* && player.y < 480*/) player.y += 5;
 			}
 
 			//  Stand still
@@ -122,7 +154,9 @@ function updatePlayer(username) {
 
 function create() {
 
-		$.get(baseUrl+'/guestAccess', function(response) {
+		var username = prompt("select a username");
+
+		$.post(baseUrl+'/generateToken', {username:username}, function(response) {
 
 			socket = io.connect(baseUrl);
 
@@ -130,27 +164,39 @@ function create() {
 				console.log('joining room with '+response.token);
 				socket.emit('authenticate', {token:response.token});
 				socket.on('authenticated', function(response) {
-					myUsername = response.username;
-					addPlayer(myUsername);
+					console.log('authentication', response);
 					socket.emit('phaserJoin', 'phaser');
+					myUsername = response.username;
+					var tint = Math.random() * 0xffffff;
+					var startPosition = {
+						x: Math.random()* 800,
+						y: 0
+					}
+					addPlayer(myUsername, startPosition);
+					socket.emit('phaserSpawn', startPosition);
 					socket.on('phaserJoin', function(data) {
 						console.log('player joined '+data.username);
-						addPlayer(data.username);
+						//addPlayer(data.username);
 						socket.emit('phaserMe', {
 							to: data.username,
 							username: myUsername,
 							center: players[myUsername].position,
 							velocity: players[myUsername].body.velocity,
-							score: players[myUsername].score
+							kills: players[myUsername].kills,
+							deaths: players[myUsername].deaths,
+							tint: tint
 						});
 					});
 					socket.on('phaserMe', function(data) {
 						console.log('previous player '+data.username);
-						addPlayer(data.username, data.center, data.velocity, false, data.score);
+						addPlayer(data.username, data.center, data.velocity, false, data.kills, data.deaths);
+					})
+					socket.on('phaserSpawn', function(data) {
+						if(players[data.player.username]) respawnPlayer(players[data.player.username], data.position);
+						else addPlayer(data.player.username, data.position);
 					})
 					socket.on('phaserAction', function(data) {
 						var player = players[data.player.username];
-						console.log('player action', data)
 						playerActions[data.player.username][data.action.action] = data.action.value;
 						player.body.moves = false;
 						player.x = data.action.position.x;
@@ -158,9 +204,23 @@ function create() {
 						player.body.moves = true;
 					})
 					socket.on('userDisconnected', function(data) {
-						if(players[data.user]) players[data.user].kill();
+						console.log('disconnection', data);
+						$( ".username:contains('"+data.user+"')" ).parent().remove();
+						if(names[data.user]) {
+							names[data.user].destroy();
+							delete names[data.user];
+						}
+						if(players[data.user]) {
+							players[data.user].kill();
+							delete players[data.user];
+						}
 					})
 				});
+
+				socket.on('disconnect', function() {
+					alert('Nope. Try again.')
+				})
+
 			});
 
 		});
@@ -182,7 +242,7 @@ function create() {
     platforms.enableBody = true;
 
     // Here we create the ground.
-    var ground = platforms.create(0, game.world.height - 64, 'ground');
+    var ground = platforms.create(0, game.world.height - 32, 'ground');
 
     //  Scale it to fit the width of the game (the original sprite is 400x32 in size)
     ground.scale.setTo(4, 2);
@@ -191,11 +251,15 @@ function create() {
     ground.body.immovable = true;
 
     //  Now let's create two ledges
-    var ledge = platforms.create(400, 400, 'ground');
+    var ledge = platforms.create(200, 420, 'ground');
     ledge.body.immovable = true;
 		ledge.body.checkCollision.down = false;
 
-    ledge = platforms.create(-150, 250, 'ground');
+    ledge = platforms.create(-150, 300, 'ground');
+    ledge.body.immovable = true;
+		ledge.body.checkCollision.down = false;
+
+		ledge = platforms.create(450, 200, 'ground');
     ledge.body.immovable = true;
 		ledge.body.checkCollision.down = false;
 
@@ -282,7 +346,7 @@ function update() {
 		for(username in players) {
 			game.physics.arcade.collide(players[username], platforms);
 			game.world.wrap(players[username], 0, true);
-			names[username].x = players[username].x-10;
+			names[username].x = players[username].x-names[username].getBounds().width/2+16;
 			names[username].y = players[username].y-10;
 			for(username2 in players) {
 				if(username != username2) game.physics.arcade.collide(players[username], players[username2], collisionHandler);
@@ -295,27 +359,43 @@ function update() {
 function collisionHandler(obj1, obj2) {
 	//do something
 	if(obj1.body.touching.down && obj2.body.touching.up) {
-		if(obj2.unkillable) return;
-		obj2.unkillable = true;
-		setTimeout(function(){obj2.unkillable=false}, 1000);
-		obj2.kill();
-		obj2.x = spawnPoint.x;
-		obj2.y = spawnPoint.y;
-		obj2.revive();
-		obj1.score += 1;
-		console.log('score: ', obj1.score);
+		killHandler(obj1, obj2);
 	} else if(obj2.body.touching.down && obj1.body.touching.up) {
-		if(obj1.unkillable) return;
-		obj1.unkillable = true;
-		setTimeout(function(){obj1.unkillable=false}, 1000);
-		obj1.kill();
-		obj1.x = spawnPoint.x;
-		obj1.y = spawnPoint.y;
-		obj1.revive();
-		obj2.score += 1;
-		console.log('score: ', obj2.score);
+		killHandler(obj2, obj1);
 	}
 }
+
+function killHandler(killer, killed) {
+	//console.log(killer.name+' killed '+killed.name);
+	if(killed.unkillable) return;
+	killed.unkillable = true;
+	setTimeout(function(){killed.unkillable=false}, 2000);
+	if(killed.name == myUsername) {
+		var data = {
+			x: Math.random() * 800,
+			y: 0,
+			killer: killer.name
+		}
+		socket.emit('phaserSpawn', data);
+		respawnPlayer(players[myUsername], data);
+	}
+}
+
+function respawnPlayer(player, data) {
+	player.kill();
+	player.x = data.x;
+	player.y = data.y;
+	player.revive();
+	if(data.killer) {
+		var killer = players[data.killer];
+		player.deaths += 1;
+		$( ".username:contains('"+player.name+"')" ).parent().find('.deaths').html(player.deaths);
+		killer.kills += 1;
+		$( ".username:contains('"+killer.name+"')" ).parent().find('.kills').html(killer.kills);
+		killer.body.velocity.y = -600;
+	}
+}
+
 </script>
 
 </body>
