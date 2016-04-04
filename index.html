@@ -35,12 +35,13 @@ function preload() {
 
 var myUsername = '';
 var players = {};
+var names = {};
 var playerActions = {};
 var platforms;
 var cursors;
 var spawnPoint;
 
-function addPlayer(username, center, velocity, actions) {
+function addPlayer(username, center, velocity, actions, score) {
 	// The player and its settings
 	var x = center?center.x:spawnPoint.x;
 	var y = center?center.y:spawnPoint.y;
@@ -56,6 +57,9 @@ function addPlayer(username, center, velocity, actions) {
 
 	if(velocity) newPlayer.body.velocity = velocity;
 
+	if(score) newPlayer.score = score;
+	else newPlayer.score = 0;
+
 	//  Our two animations, walking left and right.
 	newPlayer.animations.add('left', [0, 1, 2, 3], 10, true);
 	newPlayer.animations.add('right', [5, 6, 7, 8], 10, true);
@@ -63,6 +67,9 @@ function addPlayer(username, center, velocity, actions) {
 	if(!username) username = myUsername;
 
 	players[username] = newPlayer;
+
+	names[username] = game.add.text(newPlayer.x-10, newPlayer.y-10, username, 8);
+	names[username].fontSize = 10;
 
 	if(actions) {
 		playerActions[username] = actions;
@@ -133,12 +140,13 @@ function create() {
 							to: data.username,
 							username: myUsername,
 							center: players[myUsername].position,
-							velocity: players[myUsername].body.velocity
+							velocity: players[myUsername].body.velocity,
+							score: players[myUsername].score
 						});
 					});
 					socket.on('phaserMe', function(data) {
 						console.log('previous player '+data.username);
-						addPlayer(data.username, data.center, data.velocity);
+						addPlayer(data.username, data.center, data.velocity, false, data.score);
 					})
 					socket.on('phaserAction', function(data) {
 						var player = players[data.player.username];
@@ -274,6 +282,8 @@ function update() {
 		for(username in players) {
 			game.physics.arcade.collide(players[username], platforms);
 			game.world.wrap(players[username], 0, true);
+			names[username].x = players[username].x-10;
+			names[username].y = players[username].y-10;
 			for(username2 in players) {
 				if(username != username2) game.physics.arcade.collide(players[username], players[username2], collisionHandler);
 			}
@@ -285,15 +295,25 @@ function update() {
 function collisionHandler(obj1, obj2) {
 	//do something
 	if(obj1.body.touching.down && obj2.body.touching.up) {
+		if(obj2.unkillable) return;
+		obj2.unkillable = true;
+		setTimeout(function(){obj2.unkillable=false}, 1000);
 		obj2.kill();
 		obj2.x = spawnPoint.x;
 		obj2.y = spawnPoint.y;
 		obj2.revive();
+		obj1.score += 1;
+		console.log('score: ', obj1.score);
 	} else if(obj2.body.touching.down && obj1.body.touching.up) {
+		if(obj1.unkillable) return;
+		obj1.unkillable = true;
+		setTimeout(function(){obj1.unkillable=false}, 1000);
 		obj1.kill();
 		obj1.x = spawnPoint.x;
 		obj1.y = spawnPoint.y;
 		obj1.revive();
+		obj2.score += 1;
+		console.log('score: ', obj2.score);
 	}
 }
 </script>
