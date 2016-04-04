@@ -16,6 +16,8 @@
 
 <script type="text/javascript">
 
+var baseUrl = document.location.hostname == "localhost"?"http://localhost:1346":'http://52.31.77.24:1346';
+
 var game = new Phaser.Game(800, 600, Phaser.AUTO, '', { preload: preload, create: create, update: update });
 
 function preload() {
@@ -24,6 +26,8 @@ function preload() {
     game.load.image('ground', 'assets/platform.png');
     game.load.image('star', 'assets/star.png');
     game.load.spritesheet('dude', 'assets/dude.png', 32, 48);
+		// game.load.tilemap('tilemap', 'assets/map.json', null, Phaser.Tilemap.TILED_JSON);
+    // game.load.image('tiles', 'assets/tiles_spritesheet.png');
 
 		game.stage.disableVisibilityChange = true;
 
@@ -48,7 +52,7 @@ function addPlayer(username, center, velocity, actions) {
 	//  Player physics properties. Give the little guy a slight bounce.
 	newPlayer.body.bounce.y = 0.2;
 	newPlayer.body.gravity.y = 800;
-	newPlayer.body.collideWorldBounds = true;
+	newPlayer.body.collideWorldBounds = false;
 
 	if(velocity) newPlayer.body.velocity = velocity;
 
@@ -92,6 +96,10 @@ function updatePlayer(username) {
 	}
 	else
 	{
+			if (playerActions[username]['down']) {
+				if(player.body.touching.down && player.y < 480) player.y += 5;
+			}
+
 			//  Stand still
 			player.animations.stop();
 
@@ -107,13 +115,9 @@ function updatePlayer(username) {
 
 function create() {
 
-		//$.get('http://localhost:1346/guestAccess', function(response) {
-		$.get('http://52.31.77.24:1346/guestAccess', function(response) {
+		$.get(baseUrl+'/guestAccess', function(response) {
 
-			//var username = data.results[0].user.username;
-
-			//socket = io.connect("http://localhost:1346");
-			socket = io.connect("http://52.31.77.24:1346");
+			socket = io.connect(baseUrl);
 
 			socket.on('connect', function(data) {
 				console.log('joining room with '+response.token);
@@ -161,6 +165,8 @@ function create() {
     //  A simple background for our game
     game.add.sprite(0, 0, 'sky');
 
+		//groundLayer.resizeWorld();
+
     //  The platforms group contains the ground and the 2 ledges we can jump on
     platforms = game.add.group();
 
@@ -171,7 +177,7 @@ function create() {
     var ground = platforms.create(0, game.world.height - 64, 'ground');
 
     //  Scale it to fit the width of the game (the original sprite is 400x32 in size)
-    ground.scale.setTo(2, 2);
+    ground.scale.setTo(4, 2);
 
     //  This stops it from falling away when you jump on it
     ground.body.immovable = true;
@@ -179,9 +185,11 @@ function create() {
     //  Now let's create two ledges
     var ledge = platforms.create(400, 400, 'ground');
     ledge.body.immovable = true;
+		ledge.body.checkCollision.down = false;
 
     ledge = platforms.create(-150, 250, 'ground');
     ledge.body.immovable = true;
+		ledge.body.checkCollision.down = false;
 
     //  Our controls.
     cursors = game.input.keyboard.createCursorKeys();
@@ -240,6 +248,24 @@ function create() {
 			})
 		})
 
+		cursors.down.onUp.add(function() {
+			playerActions[myUsername]['down'] = false;
+			socket.emit('phaserAction', {
+				position: players[myUsername].position,
+				action: 'down',
+				value: false
+			})
+		})
+
+		cursors.down.onDown.add(function() {
+			playerActions[myUsername]['down'] = true;
+			socket.emit('phaserAction', {
+				position: players[myUsername].position,
+				action: 'down',
+				value: true
+			})
+		})
+
 }
 
 function update() {
@@ -247,6 +273,7 @@ function update() {
     //  Collide the player and the stars with the platforms
 		for(username in players) {
 			game.physics.arcade.collide(players[username], platforms);
+			game.world.wrap(players[username], 0, true);
 			for(username2 in players) {
 				if(username != username2) game.physics.arcade.collide(players[username], players[username2], collisionHandler);
 			}
