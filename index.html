@@ -198,10 +198,12 @@ function create() {
 					socket.on('phaserAction', function(data) {
 						var player = players[data.player.username];
 						playerActions[data.player.username][data.action.action] = data.action.value;
-						player.body.moves = false;
+						//player.body.moves = false;
 						player.x = data.action.position.x;
 						player.y = data.action.position.y;
-						player.body.moves = true;
+						player.body.velocity.y = data.action.velocity.y;
+						player.body.velocity.y = data.action.velocity.y;
+						//player.body.moves = true;
 					})
 					socket.on('userDisconnected', function(data) {
 						console.log('disconnection', data);
@@ -270,6 +272,7 @@ function create() {
 			playerActions[myUsername]['left'] = false;
 			socket.emit('phaserAction', {
 				position: players[myUsername].position,
+				velocity: players[myUsername].body.velocity,
 				action: 'left',
 				value: false
 			})
@@ -279,6 +282,7 @@ function create() {
 			playerActions[myUsername]['left'] = true;
 			socket.emit('phaserAction', {
 				position: players[myUsername].position,
+				velocity: players[myUsername].body.velocity,
 				action: 'left',
 				value: true
 			})
@@ -288,6 +292,7 @@ function create() {
 			playerActions[myUsername]['right'] = false;
 			socket.emit('phaserAction', {
 				position: players[myUsername].position,
+				velocity: players[myUsername].body.velocity,
 				action: 'right',
 				value: false
 			})
@@ -297,6 +302,7 @@ function create() {
 			playerActions[myUsername]['right'] = true;
 			socket.emit('phaserAction', {
 				position: players[myUsername].position,
+				velocity: players[myUsername].body.velocity,
 				action: 'right',
 				value: true
 			})
@@ -306,6 +312,7 @@ function create() {
 			playerActions[myUsername]['up'] = false;
 			socket.emit('phaserAction', {
 				position: players[myUsername].position,
+				velocity: players[myUsername].body.velocity,
 				action: 'up',
 				value: false
 			})
@@ -315,6 +322,7 @@ function create() {
 			playerActions[myUsername]['up'] = true;
 			socket.emit('phaserAction', {
 				position: players[myUsername].position,
+				velocity: players[myUsername].body.velocity,
 				action: 'up',
 				value: true
 			})
@@ -324,6 +332,7 @@ function create() {
 			playerActions[myUsername]['down'] = false;
 			socket.emit('phaserAction', {
 				position: players[myUsername].position,
+				velocity: players[myUsername].body.velocity,
 				action: 'down',
 				value: false
 			})
@@ -333,6 +342,7 @@ function create() {
 			playerActions[myUsername]['down'] = true;
 			socket.emit('phaserAction', {
 				position: players[myUsername].position,
+				velocity: players[myUsername].body.velocity,
 				action: 'down',
 				value: true
 			})
